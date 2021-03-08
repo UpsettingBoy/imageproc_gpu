@@ -17,10 +17,12 @@ use ocl::Device;
 use std::collections::HashMap;
 
 pub mod contrast;
+pub mod geometric_trans;
 
 #[derive(PartialEq, Eq, Hash)]
 pub(crate) enum Feature {
     Contrast,
+    Geometric_Trans,
 }
 
 pub struct Executor {
@@ -67,6 +69,19 @@ impl Executor {
             programs.insert(Feature::Contrast, contrast);
 
             info!("Added contrast feature");
+        }
+
+        #[cfg(feature = "geometric_trans")]
+        {
+            let geometric = ocl::Program::builder()
+                .devices(device)
+                .src_file("programs/geometric_trans.cl")
+                .build(&context)
+                .expect("Could not build the geometric transformations program!");
+
+            programs.insert(Feature::Geometric_Trans, geometric);
+
+            info!("Added geometric transformations feature");
         }
 
         Self { queue, programs }
