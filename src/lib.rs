@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use log::info;
-use ocl::Device;
+use ocl::{core::ClVersions, Device};
 use std::collections::HashMap;
 
 pub mod contrast;
@@ -22,7 +22,7 @@ pub mod geometric_trans;
 #[derive(PartialEq, Eq, Hash)]
 pub(crate) enum Feature {
     Contrast,
-    Geometric_Trans,
+    GeometricTrans,
 }
 
 pub struct Executor {
@@ -32,9 +32,7 @@ pub struct Executor {
 
 impl Default for Executor {
     fn default() -> Self {
-        let platform = ocl::Platform::list()
-            .pop()
-            .expect("There are no available platforms!");
+        let platform = ocl::Platform::first().expect("There are no available platforms!");
         let device = Device::first(platform).expect("There are no devices for this platform!");
 
         info!(
@@ -60,9 +58,11 @@ impl Executor {
         //Create progams for each feature
         #[cfg(feature = "contrast")]
         {
+            let contrast_str = include_str!("../programs/contrast.cl");
+
             let contrast = ocl::Program::builder()
                 .devices(device)
-                .src_file("programs/contrast.cl")
+                .src(contrast_str)
                 .build(&context)
                 .expect("Could not build the contrast program!");
 
@@ -73,13 +73,15 @@ impl Executor {
 
         #[cfg(feature = "geometric_trans")]
         {
+            let geometric_str = include_str!("../programs/geometric_trans.cl");
+
             let geometric = ocl::Program::builder()
                 .devices(device)
-                .src_file("programs/geometric_trans.cl")
+                .src(geometric_str)
                 .build(&context)
                 .expect("Could not build the geometric transformations program!");
 
-            programs.insert(Feature::Geometric_Trans, geometric);
+            programs.insert(Feature::GeometricTrans, geometric);
 
             info!("Added geometric transformations feature");
         }
@@ -93,7 +95,7 @@ impl Executor {
             .expect("This feature is not enabled/initialized!")
     }
 
-    pub fn alloc_img<T, C>(
+    pub(crate) fn alloc_img<T, C>(
         &self,
         img: &image::ImageBuffer<T, C>,
         flags: Option<ocl::flags::MemFlags>,
@@ -160,15 +162,5 @@ impl Executor {
             .queue(self.queue.clone())
             .build()
             .expect("Could not allocate image on GPU!")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn executor_default() {
-        let _ = Executor::default();
     }
 }
