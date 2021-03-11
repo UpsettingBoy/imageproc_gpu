@@ -18,166 +18,23 @@ use crate::{Executor, Feature};
 
 impl Executor {
     pub fn threshold(&self, img: &GrayImage, threshold: u8) -> GrayImage {
-        let src = self.alloc_img(
-            img,
-            Some(
-                ocl::flags::MEM_READ_ONLY
-                    | ocl::flags::MEM_HOST_WRITE_ONLY
-                    | ocl::flags::MEM_COPY_HOST_PTR,
-            ),
-        );
-
-        let dest = self.alloc_img(
-            img,
-            Some(
-                ocl::flags::MEM_WRITE_ONLY
-                    | ocl::flags::MEM_HOST_READ_ONLY
-                    | ocl::flags::MEM_COPY_HOST_PTR,
-            ),
-        );
-
-        let dims = img.dimensions();
-
-        let kernel = ocl::Kernel::builder()
-            .program(self.get_program(&Feature::Contrast))
-            .name("threshold")
-            .queue(self.queue.clone())
-            .global_work_size(&dims)
-            .arg(&src)
-            .arg(&dest)
-            .arg(&(threshold as u32))
-            .build()
-            .expect("threshold kernel could not be loaded!");
-
-        unsafe {
-            kernel.enq().expect("Error while enqueueing the kernel!");
-        }
-
-        let mut output = image::ImageBuffer::new(dims.0, dims.1);
-
-        dest.read(&mut output)
-            .enq()
-            .expect("Error while copying device mem to host!");
-
-        output
+        todo!()
     }
 
     pub fn threshold_mut(&self, img: &mut GrayImage, threshold: u8) {
-        let output = self.alloc_img(&img, None);
-
-        let kernel = ocl::Kernel::builder()
-            .program(self.get_program(&Feature::Contrast))
-            .name("threshold_mut")
-            .queue(self.queue.clone())
-            .global_work_size(&img.dimensions())
-            .arg(&output)
-            .arg(&(threshold as u32))
-            .build()
-            .expect("threshold_mut kernel could not be loaded!");
-
-        unsafe {
-            kernel.enq().expect("Error while enqueueing the kernel!");
-        }
-
-        output
-            .read(img)
-            .enq()
-            .expect("Error while copying device mem to host!");
+        todo!()
     }
 
     pub fn adaptive_threshold(&self, img: &GrayImage, block_radius: u32) -> GrayImage {
         assert!(block_radius > 0);
 
-        let src = self.alloc_img(
-            img,
-            Some(
-                ocl::flags::MEM_READ_ONLY
-                    | ocl::flags::MEM_HOST_WRITE_ONLY
-                    | ocl::flags::MEM_COPY_HOST_PTR,
-            ),
-        );
-
-        let dest = self.alloc_img(
-            img,
-            Some(
-                ocl::flags::MEM_WRITE_ONLY
-                    | ocl::flags::MEM_HOST_READ_ONLY
-                    | ocl::flags::MEM_COPY_HOST_PTR,
-            ),
-        );
-
-        let dims = img.dimensions();
-
-        let kernel = ocl::Kernel::builder()
-            .program(self.get_program(&Feature::Contrast))
-            .name("adaptive_threshold")
-            .queue(self.queue.clone())
-            .global_work_size(&dims)
-            .arg(&src)
-            .arg(&dest)
-            .arg(&(block_radius as i32))
-            .build()
-            .expect("adaptive_threshold kernel could not be loaded!");
-
-        unsafe {
-            kernel.enq().expect("Error while enqueueing the kernel!");
-        }
-
-        let mut output = image::ImageBuffer::new(dims.0, dims.1);
-
-        dest.read(&mut output)
-            .enq()
-            .expect("Error while copying device mem to host!");
-
-        output
+        todo!()
     }
 
     pub fn stretch_contrast(&self, img: &GrayImage, lower: u8, upper: u8) -> GrayImage {
         assert!(upper > lower, "upper must be strictly greater than lower");
 
-        let src = self.alloc_img(
-            img,
-            Some(
-                ocl::flags::MEM_READ_ONLY
-                    | ocl::flags::MEM_HOST_WRITE_ONLY
-                    | ocl::flags::MEM_COPY_HOST_PTR,
-            ),
-        );
-
-        let dest = self.alloc_img(
-            img,
-            Some(
-                ocl::flags::MEM_WRITE_ONLY
-                    | ocl::flags::MEM_HOST_READ_ONLY
-                    | ocl::flags::MEM_COPY_HOST_PTR,
-            ),
-        );
-
-        let dims = img.dimensions();
-
-        let kernel = ocl::Kernel::builder()
-            .program(self.get_program(&Feature::Contrast))
-            .name("stretch_contrast")
-            .queue(self.queue.clone())
-            .global_work_size(&dims)
-            .arg(&src)
-            .arg(&dest)
-            .arg(&(lower as u32))
-            .arg(&(upper as u32))
-            .build()
-            .expect("stretch_contrast kernel could not be loaded!");
-
-        unsafe {
-            kernel.enq().expect("Error while enqueueing the kernel!");
-        }
-
-        let mut output = image::ImageBuffer::new(dims.0, dims.1);
-
-        dest.read(&mut output)
-            .enq()
-            .expect("Error while copying device mem to host!");
-
-        output
+        todo!()
     }
 }
 

@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::executor::block_on;
+use image::ImageBuffer;
 use log::info;
-use ocl::{core::ClVersions, Device};
-use std::collections::HashMap;
+use std::{collections::HashMap, option};
+use zerocopy::AsBytes;
 
 pub mod contrast;
 pub mod geometric_trans;
@@ -26,141 +28,122 @@ pub(crate) enum Feature {
 }
 
 pub struct Executor {
-    queue: ocl::Queue,
-    programs: HashMap<Feature, ocl::Program>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
 impl Default for Executor {
     fn default() -> Self {
-        let platform = ocl::Platform::first().expect("There are no available platforms!");
-        let device = Device::first(platform).expect("There are no devices for this platform!");
-
-        info!(
-            "Using {} - {}",
-            platform.name().unwrap(),
-            device.name().unwrap()
-        );
-
-        Executor::new(device)
+        futures::executor::block_on(Self::new(wgpu::BackendBit::all()))
     }
 }
 
 impl Executor {
-    pub fn new(device: Device) -> Self {
-        let context = ocl::Context::builder()
-            .devices(device)
-            .build()
-            .expect("Could not build the context!");
-
-        let queue = ocl::Queue::new(&context, device, None).expect("Could not create the queue!");
-        let mut programs = HashMap::new();
-
-        //Create progams for each feature
-        #[cfg(feature = "contrast")]
-        {
-            let contrast_str = include_str!("../programs/contrast.cl");
-
-            let contrast = ocl::Program::builder()
-                .devices(device)
-                .src(contrast_str)
-                .build(&context)
-                .expect("Could not build the contrast program!");
-
-            programs.insert(Feature::Contrast, contrast);
-
-            info!("Added contrast feature");
-        }
-
-        #[cfg(feature = "geometric_trans")]
-        {
-            let geometric_str = include_str!("../programs/geometric_trans.cl");
-
-            let geometric = ocl::Program::builder()
-                .devices(device)
-                .src(geometric_str)
-                .build(&context)
-                .expect("Could not build the geometric transformations program!");
-
-            programs.insert(Feature::GeometricTrans, geometric);
-
-            info!("Added geometric transformations feature");
-        }
-
-        Self { queue, programs }
-    }
-
-    pub(crate) fn get_program(&self, f: &Feature) -> &ocl::Program {
-        self.programs
-            .get(f)
-            .expect("This feature is not enabled/initialized!")
-    }
-
-    pub(crate) fn alloc_img<T, C>(
-        &self,
-        img: &image::ImageBuffer<T, C>,
-        flags: Option<ocl::flags::MemFlags>,
-    ) -> ocl::Image<T::Subpixel>
-    where
-        T: image::Pixel + 'static,
-        T::Subpixel: ocl::traits::OclPrm + 'static,
-        C: std::ops::Deref<Target = [T::Subpixel]>,
-    {
-        use ocl::{
-            core::MemObjectType,
-            enums::{ImageChannelDataType, ImageChannelOrder},
+    pub async fn new(backend: wgpu::BackendBit) -> Self {
+        let adapter_options = wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
         };
 
-        let dims = img.dimensions();
-        let (order, c_type) = match T::COLOR_TYPE {
-            image::ColorType::L8 => (
-                ImageChannelOrder::Intensity,
-                ImageChannelDataType::UnsignedInt8,
-            ),
-            image::ColorType::La8 => (
-                ImageChannelOrder::Luminance,
-                ImageChannelDataType::UnsignedInt8,
-            ),
-            image::ColorType::Rgb8 => (ImageChannelOrder::Rgb, ImageChannelDataType::UnsignedInt8),
-            image::ColorType::Rgba8 => {
-                (ImageChannelOrder::Rgba, ImageChannelDataType::UnsignedInt8)
-            }
-            image::ColorType::L16 => (
-                ImageChannelOrder::Intensity,
-                ImageChannelDataType::UnsignedInt16,
-            ),
-            image::ColorType::La16 => (
-                ImageChannelOrder::Luminance,
-                ImageChannelDataType::UnsignedInt16,
-            ),
-            image::ColorType::Rgb16 => {
-                (ImageChannelOrder::Rgb, ImageChannelDataType::UnsignedInt16)
-            }
-            image::ColorType::Rgba16 => {
-                (ImageChannelOrder::Rgba, ImageChannelDataType::UnsignedInt16)
-            }
-            image::ColorType::Bgr8 => panic!("Channel order BRG is not implemented!"),
-            image::ColorType::Bgra8 => {
-                (ImageChannelOrder::Bgra, ImageChannelDataType::UnsignedInt8)
-            }
+        let instance = wgpu::Instance::new(backend);
+        let adapter = instance
+            .request_adapter(&adapter_options)
+            .await
+            .expect("Could not find a valid adapter!");
+
+        let (device, queue) = adapter
+            .request_device(&Default::default(), None)
+            .await
+            .expect("Could not find a valid device!");
+
+        log::info!(
+            "Using {:?} - {}",
+            adapter.get_info().backend,
+            adapter.get_info().name
+        );
+
+        let compiler = shaderc::Compiler::new().unwrap();
+
+        #[cfg(feature = "contrast")]
+        {
+            let contrast_src = include_str!("programs/fake.comp");
+            let contrast_spirv = compiler.compile_into_spirv(
+                contrast_src,
+                shaderc::ShaderKind::Compute,
+                "fake.comp",
+                "main",
+                None,
+            );
+        }
+
+        Self { device, queue }
+    }
+
+    pub fn alloc_img<P, C>(&self, img: &image::ImageBuffer<P, C>, usage: Option<wgpu::TextureUsage>)
+    where
+        P: image::Pixel + 'static,
+        P::Subpixel: zerocopy::FromBytes + zerocopy::AsBytes + 'static,
+        C: std::ops::Deref<Target = [P::Subpixel]>,
+    {
+        let (width, height) = img.dimensions();
+
+        let (format, type_size) = match P::COLOR_TYPE {
+            image::ColorType::L8 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::La8 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::Rgb8 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::Rgba8 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::L16 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::La16 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::Rgb16 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::Rgba16 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::Bgr8 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
+            image::ColorType::Bgra8 => (wgpu::TextureFormat::R8Unorm, std::mem::size_of::<u8>()),
             image::ColorType::__NonExhaustive(_) => {
                 panic!("This channel order and channel data type combo is not implemented!")
             }
         };
 
-        let flags = match flags {
-            Some(f) => f,
-            None => ocl::flags::MEM_COPY_HOST_PTR | ocl::flags::MEM_READ_WRITE,
+        let usage = if let Some(t) = usage {
+            t
+        } else {
+            wgpu::TextureUsage::COPY_SRC
+                | wgpu::TextureUsage::COPY_DST
+                | wgpu::TextureUsage::SAMPLED
         };
 
-        ocl::Image::<T::Subpixel>::builder()
-            .channel_order(order)
-            .channel_data_type(c_type)
-            .image_type(MemObjectType::Image2d)
-            .dims(&dims)
-            .flags(flags)
-            .copy_host_slice(&img)
-            .queue(self.queue.clone())
-            .build()
-            .expect("Could not allocate image on GPU!")
+        let texture_size = wgpu::Extent3d {
+            width,
+            height,
+            depth: 1,
+        };
+
+        let texture_desc = wgpu::TextureDescriptor {
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            label: None,
+        };
+
+        let texture = self.device.create_texture(&texture_desc);
+
+        self.queue.write_texture(
+            wgpu::TextureCopyView {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            img.as_bytes(),
+            wgpu::TextureDataLayout {
+                offset: 0,
+                bytes_per_row: (type_size as u32) * width,
+                rows_per_image: height,
+            },
+            texture_size,
+        );
+
+        todo!()
     }
 }
