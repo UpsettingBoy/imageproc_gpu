@@ -15,8 +15,7 @@
 use futures::executor::block_on;
 use image::ImageBuffer;
 use log::info;
-use std::{collections::HashMap, option};
-use zerocopy::AsBytes;
+use std::{borrow::Cow, collections::HashMap, option};
 
 pub mod contrast;
 pub mod geometric_trans;
@@ -34,7 +33,7 @@ pub struct Executor {
 
 impl Default for Executor {
     fn default() -> Self {
-        futures::executor::block_on(Self::new(wgpu::BackendBit::all()))
+        futures::executor::block_on(Self::new(wgpu::BackendBit::PRIMARY))
     }
 }
 
@@ -51,8 +50,14 @@ impl Executor {
             .await
             .expect("Could not find a valid adapter!");
 
+        let features = wgpu::DeviceDescriptor {
+            label: None,
+            features: wgpu::Features::empty(),
+            limits: wgpu::Limits::default(),
+        };
+
         let (device, queue) = adapter
-            .request_device(&Default::default(), None)
+            .request_device(&features, None)
             .await
             .expect("Could not find a valid device!");
 
@@ -62,27 +67,51 @@ impl Executor {
             adapter.get_info().name
         );
 
-        let compiler = shaderc::Compiler::new().unwrap();
+        let mut flags = wgpu::ShaderFlags::VALIDATION;
+        match adapter.get_info().backend {
+            wgpu::Backend::Vulkan | wgpu::Backend::Metal => {
+                flags |= wgpu::ShaderFlags::EXPERIMENTAL_TRANSLATION;
+            }
+            _ => {}
+        }
 
         #[cfg(feature = "contrast")]
         {
-            let contrast_src = include_str!("programs/fake.comp");
-            let contrast_spirv = compiler.compile_into_spirv(
-                contrast_src,
-                shaderc::ShaderKind::Compute,
-                "fake.comp",
-                "main",
-                None,
-            );
+            let src = wgpu::include_spirv!("../compiled/contrast/threshold.spirv");
+            let cs = device.create_shader_module(&src);
         }
 
         Self { device, queue }
     }
 
+    // pub fn alloc_img_u8<P, C>(
+    //     &self,
+    //     img: &image::ImageBuffer<P, C>,
+    //     usage: Option<wgpu::TextureUsage>,
+    // ) where
+    //     P: image::Pixel + 'static,
+    //     P::Subpixel: u8,
+    //     C: std::ops::Deref<Target = [P::Subpixel]>,
+    // {
+    //     todo!()
+    // }
+
+    // pub fn alloc_img_u16<P, C>(
+    //     &self,
+    //     img: &image::ImageBuffer<P, C>,
+    //     usage: Option<wgpu::TextureUsage>,
+    // ) where
+    //     P: image::Pixel + 'static,
+    //     P::Subpixel: u8,
+    //     C: std::ops::Deref<Target = [P::Subpixel]>,
+    // {
+    //     todo!()
+    // }
+
     pub fn alloc_img<P, C>(&self, img: &image::ImageBuffer<P, C>, usage: Option<wgpu::TextureUsage>)
     where
         P: image::Pixel + 'static,
-        P::Subpixel: zerocopy::FromBytes + zerocopy::AsBytes + 'static,
+        P::Subpixel: num::Unsigned + num::Integer + 'static,
         C: std::ops::Deref<Target = [P::Subpixel]>,
     {
         let (width, height) = img.dimensions();
@@ -135,7 +164,7 @@ impl Executor {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            img.as_bytes(),
+            &vec![0u8; 100],
             wgpu::TextureDataLayout {
                 offset: 0,
                 bytes_per_row: (type_size as u32) * width,
