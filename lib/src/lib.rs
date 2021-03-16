@@ -77,8 +77,8 @@ impl Executor {
 
         #[cfg(feature = "contrast")]
         {
-            let src = wgpu::include_spirv!("../compiled/contrast/threshold.spirv");
-            let cs = device.create_shader_module(&src);
+            // let module = wgpu::include_spirv!(env!("compute_shader.spv"));
+            // let cs = device.create_shader_module(&src);
         }
 
         Self { device, queue }
