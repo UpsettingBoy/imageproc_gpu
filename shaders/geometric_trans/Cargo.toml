@@ -2,12 +2,12 @@
 authors = ["Jerónimo Sánchez <jeronimosg@hotmail.es>"]
 edition = "2018"
 license = "Apache-2.0"
-name    = "shaders"
+name    = "geometric_trans"
 version = "0.1.0"
 
 [lib]
 crate-type = ["dylib"]
 
 [dependencies]
+spirv-std        = "*"
 spirv-std-macros = "*"
-spirv-std = "*"

@@ -8,24 +8,29 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-futures = "0.3.13"
-image   = { version = "0.23.14", default-features = false }
-log     = "0.4.14"
-num     = "0.4.0"
+futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
+image   = { version = "0.23", default-features = false }
+log     = "0.4"
 wgpu    = "0.7.0"
 
 [build-dependencies]
-spirv-builder = { path = "../rust-gpu/spirv-builder" }
+spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu.git", tag = "v0.3.1" }
 
 
 [dev-dependencies]
-image     = "0.23.14"
-imageproc = "0.22.0"
+image     = "0.23"
+imageproc = "0.22"
 
 [features]
-default = ["contrast", "geometric_trans", "use-compiled-tools"]
+default             = ["contrast", "geometric_trans", "use-compiled-tools"]
+use-compiled-tools  = ["spirv-builder/use-compiled-tools"]
 use-installed-tools = ["spirv-builder/use-installed-tools"]
-use-compiled-tools = ["spirv-builder/use-compiled-tools"]
 
 contrast        = []
 geometric_trans = []
+
+[profile.dev.build-override]
+opt-level = 3
+
+[profile.release.build-override]
+opt-level = 3

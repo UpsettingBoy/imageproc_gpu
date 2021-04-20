@@ -1,0 +1,13 @@
+[package]
+authors = ["Jerónimo Sánchez <jeronimosg@hotmail.es>"]
+edition = "2018"
+license = "Apache-2.0"
+name    = "contrast"
+version = "0.1.0"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+spirv-std-macros = "*"
+spirv-std = "*"

@@ -11,6 +11,7 @@ extern crate spirv_std;
 
 #[cfg(not(target_arch = "spirv"))]
 #[macro_use]
-pub extern crate spirv_std_macros;
+extern crate spirv_std_macros;
 
-pub mod contrast;
+#[spirv(compute(threads(32)))]
+pub fn threshold() {}

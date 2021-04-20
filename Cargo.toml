@@ -1,7 +1,2 @@
 [workspace]
-members = [
-    "lib",
-    "shaders",
-    "rust-gpu/rustc_codegen_spirv",
-    "rust-gpu/spirv-builder",
-]
+members = ["lib", "shaders/contrast", "shaders/geometric_trans"]

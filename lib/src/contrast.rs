@@ -13,141 +13,105 @@
 // limitations under the License.
 
 use image::GrayImage;
+use wgpu::{include_spirv, BindingResource};
 
-use crate::{Executor, Feature};
+use crate::Gpu;
 
-impl Executor {
-    pub fn threshold(&self, img: &GrayImage, threshold: u8) -> GrayImage {
-        todo!()
-    }
+pub struct ContrastExe<'a> {
+    gpu: &'a Gpu,
+    module: wgpu::ShaderModule,
+}
 
-    pub fn threshold_mut(&self, img: &mut GrayImage, threshold: u8) {
-        todo!()
-    }
+impl<'a> ContrastExe<'a> {
+    pub fn threshold(&self, img: &GrayImage, th: u8) -> GrayImage {
+        let (input, format) = self.gpu.alloc_img(img, Some(wgpu::TextureUsage::COPY_SRC));
+        let (output, _) = self.gpu.alloc_img(img, Some(wgpu::TextureUsage::COPY_DST));
 
-    pub fn adaptive_threshold(&self, img: &GrayImage, block_radius: u32) -> GrayImage {
-        assert!(block_radius > 0);
+        let input_view = input.create_view(&Default::default());
+        let output_view = output.create_view(&Default::default());
 
-        todo!()
-    }
+        let bind_group_layout =
+            self.gpu
+                .dev
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("contrast::bind_group"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            count: None,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::StorageTexture {
+                                dimension: wgpu::TextureViewDimension::D2,
+                                format,
+                                readonly: true,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            count: None,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::StorageTexture {
+                                dimension: wgpu::TextureViewDimension::D2,
+                                format,
+                                readonly: false,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            count: None,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::StorageTexture {
+                                dimension: wgpu::TextureViewDimension::D2,
+                                format,
+                                readonly: true,
+                            },
+                        },
+                    ],
+                });
 
-    pub fn stretch_contrast(&self, img: &GrayImage, lower: u8, upper: u8) -> GrayImage {
-        assert!(upper > lower, "upper must be strictly greater than lower");
+        let pipeline_layout =
+            self.gpu
+                .dev
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("contrast::pipeline_layout"),
+                    bind_group_layouts: &[&bind_group_layout],
+                    push_constant_ranges: &[],
+                });
 
-        todo!()
+        let compute_pipeline =
+            self.gpu
+                .dev
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("contrast::compute_threshold"),
+                    layout: Some(&self.layout),
+                    compute_stage: wgpu::ProgrammableStageDescriptor {
+                        module: &self.module,
+                        entry_point: "threshold",
+                    },
+                });
+
+        let group = self.gpu.dev.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.bind,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&input_view),
+            }],
+        });
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use image::Luma;
-    use imageproc::assert_pixels_eq;
+impl Gpu {
+    pub fn contrast_executor(&self) -> ContrastExe {
+        let module = self
+            .dev
+            .create_shader_module(include_spirv!(env!("contrast.spv")));
 
-    use super::*;
-
-    // #[test]
-    // fn adaptive_threshold_constant() {
-    //     let executor = Executor::default();
-
-    //     let image = GrayImage::from_pixel(3, 3, Luma([100u8]));
-    //     let binary = executor.adaptive_threshold(&image, 1);
-    //     let expected = GrayImage::from_pixel(3, 3, Luma([255u8]));
-    //     assert_pixels_eq!(binary, expected);
-    // }
-
-    // #[test]
-    // fn adaptive_threshold_one_darker_pixel() {
-    //     let executor = Executor::default();
-
-    //     for y in 0..3 {
-    //         for x in 0..3 {
-    //             let mut image = GrayImage::from_pixel(3, 3, Luma([200u8]));
-    //             image.put_pixel(x, y, Luma([100u8]));
-    //             let binary = executor.adaptive_threshold(&image, 1);
-    //             // All except the dark pixel have brightness >= their local mean
-    //             let mut expected = GrayImage::from_pixel(3, 3, Luma([255u8]));
-    //             expected.put_pixel(x, y, Luma([0u8]));
-    //             assert_pixels_eq!(binary, expected);
-    //         }
-    //     }
-    // }
-
-    // #[test]
-    // fn adaptive_threshold_one_lighter_pixel() {
-    //     let executor = Executor::default();
-
-    //     for y in 0..5 {
-    //         for x in 0..5 {
-    //             let mut image = GrayImage::from_pixel(5, 5, Luma([100u8]));
-    //             image.put_pixel(x, y, Luma([200u8]));
-
-    //             let binary = executor.adaptive_threshold(&image, 1);
-
-    //             for yb in 0..5 {
-    //                 for xb in 0..5 {
-    //                     let output_intensity = binary.get_pixel(xb, yb)[0];
-
-    //                     let is_light_pixel = xb == x && yb == y;
-
-    //                     let local_mean_includes_light_pixel =
-    //                         (yb as i32 - y as i32).abs() <= 1 && (xb as i32 - x as i32).abs() <= 1;
-
-    //                     if is_light_pixel {
-    //                         assert_eq!(output_intensity, 255);
-    //                     } else if local_mean_includes_light_pixel {
-    //                         assert_eq!(output_intensity, 0);
-    //                     } else {
-    //                         assert_eq!(output_intensity, 255);
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    fn constant_image(width: u32, height: u32, intensity: u8) -> GrayImage {
-        GrayImage::from_pixel(width, height, Luma([intensity]))
+        ContrastExe {
+            gpu: &self,
+            module,
+            bind: bind_group_layout,
+            layout: pipeline_layout,
+        }
     }
-
-    #[test]
-    fn test_threshold_0_image_0() {
-        let executor = Executor::default();
-
-        let expected = 0u8;
-        let actual = executor.threshold(&constant_image(10, 10, 0), 0);
-        assert_pixels_eq!(actual, constant_image(10, 10, expected));
-    }
-
-    // #[test]
-    // fn test_threshold_0_image_1() {
-    //     let executor = Executor::default();
-
-    //     let expected = 255u8;
-    //     let actual = executor.threshold(&constant_image(10, 10, 1), 0);
-    //     assert_pixels_eq!(actual, constant_image(10, 10, expected));
-    // }
-
-    // #[test]
-    // fn test_threshold_threshold_255_image_255() {
-    //     let executor = Executor::default();
-
-    //     let expected = 0u8;
-    //     let actual = executor.threshold(&constant_image(10, 10, 255), 255);
-    //     assert_pixels_eq!(actual, constant_image(10, 10, expected));
-    // }
-
-    // #[test]
-    // fn test_threshold() {
-    //     let executor = Executor::default();
-
-    //     let original_contents = (0u8..26u8).map(|x| x * 10u8).collect();
-    //     let original = GrayImage::from_raw(26, 1, original_contents).unwrap();
-
-    //     let expected_contents = vec![0u8; 13].into_iter().chain(vec![255u8; 13]).collect();
-
-    //     let expected = GrayImage::from_raw(26, 1, expected_contents).unwrap();
-
-    //     let actual = executor.threshold(&original, 125u8);
-    //     assert_pixels_eq!(expected, actual);
-    // }
 }
