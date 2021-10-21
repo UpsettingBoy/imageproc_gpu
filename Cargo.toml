@@ -1,23 +1,20 @@
 [package]
 authors = ["Jerónimo Sánchez <jeronimosg@hotmail.es>"]
 edition = "2018"
-license = "Apache-2.0"
-name    = "imageproc_gpu"
-version = "0.1.0"
+name = "imageproc_gpu"
+version = "0.0.0"
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-image = { version = "0.23.14", default-features = false }
-log   = "0.4.14"
-ocl   = { git = "https://github.com/michaelmattig/ocl.git", branch = "rustc_version" } # Change back to mainstream when PR #201 is solved.
+image = { version = "0.23", default-features = false }
+gpgpu = { git = "https://github.com/UpsettingBoy/gpgpu-rs", tag = "v0.0.0-alpha.2" }
 
 [dev-dependencies]
-image     = "0.23.14"
+image = "0.23.14"
 imageproc = "0.22.0"
 
 [features]
-default = ["contrast", "geometric_trans"]
-
-contrast        = []
+contrast = []
 geometric_trans = []
